@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ac-comfyui-queue-manager"
+version = "0.1.0"
+description = "A comprehensive queue management system for ComfyUI workflows"
+authors = [{name = "Abdullah Ceylan"}]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "flask>=2.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "pre-commit>=3.0.0",
+]
+
+[project.urls]
+bugs = "https://github.com/abdullahceylan/ac-comfyui-queue-manager/issues"
+homepage = "https://github.com/abdullahceylan/ac-comfyui-queue-manager"
+Repository = "https://github.com/abdullahceylan/ac-comfyui-queue-manager"
+
+[tool.comfy]
+PublisherId = "abdullahceylan"
+DisplayName = "AC ComfyUI Queue Manager"
+Icon = "https://raw.githubusercontent.com/abdullahceylan/ac-comfyui-queue-manager/refs/heads/main/queue-icon.svg"
+
+[tool.ruff]
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.8+
+target-version = "py38"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+[tool.ruff.lint]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
+select = ["E", "F", "W", "I", "N", "UP", "YTT", "ANN", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "DJ", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "TCH", "INT", "ARG", "PTH", "TD", "FIX", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "AIR", "PERF", "FURB", "LOG", "RUF"]
+
+# Ignore specific rules that might be too strict for this project
+ignore = [
+    "D",       # pydocstyle (we'll enable specific ones we want)
+    "COM812",  # Trailing comma missing (conflicts with formatter)
+    "ISC001",  # Implicitly concatenated string literals (conflicts with formatter)
+    "S101",    # Use of assert detected (common in tests)
+    "T201",    # print found (useful for debugging)
+    "FBT001",  # Boolean positional arg in function definition
+    "FBT002",  # Boolean default value in function definition
+    "ARG002",  # Unused method argument (common in interfaces)
+    "PLR0913", # Too many arguments to function call
+    "PLR2004", # Magic value used in comparison
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use magic values, assertions, and fixtures
+"test_*.py" = ["PLR2004", "S101", "ARG001"]
+"**/tests/**/*.py" = ["PLR2004", "S101", "ARG001"]
+
+# __init__.py files can have unused imports and module naming issues
+"__init__.py" = ["F401", "N999"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["comfyui_queue_manager"]
+force-sort-within-sections = true
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+ignore-fully-untyped = true

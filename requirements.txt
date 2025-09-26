@@ -1,8 +1,5 @@
 flask>=2.3.0
-sqlite3
-uuid
-datetime
-dataclasses
-enum34
-typing
-json
+
+# Development dependencies
+ruff>=0.1.0
+pre-commit>=3.0.0
