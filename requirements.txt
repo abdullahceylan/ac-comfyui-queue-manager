@@ -1,0 +1,8 @@
+flask>=2.3.0
+sqlite3
+uuid
+datetime
+dataclasses
+enum34
+typing
+json

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUI Queue Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="queue-manager-app">
+        <header>
+            <h1>Queue Manager</h1>
+            <div class="controls">
+                <button id="pause-resume-btn" class="btn btn-primary">Pause</button>
+                <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+            </div>
+        </header>
+        
+        <main>
+            <div class="queue-container">
+                <div class="queue-header">
+                    <h2>Queue Items</h2>
+                    <div class="queue-actions">
+                        <button id="archive-selected-btn" class="btn btn-warning">Archive Selected</button>
+                        <button id="delete-selected-btn" class="btn btn-danger">Delete Selected</button>
+                    </div>
+                </div>
+                
+                <div class="filters">
+                    <input type="text" id="search-input" placeholder="Search workflows...">
+                    <select id="status-filter">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="running">Running</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                </div>
+                
+                <div id="queue-items" class="queue-items">
+                    <!-- Queue items will be populated here -->
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="queue_manager.js"></script>
+</body>
+</html>
