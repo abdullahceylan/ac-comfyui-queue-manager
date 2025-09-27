@@ -13,14 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
 
+from error_handler import ErrorHandler, with_database_error_handling
+from exceptions import ConnectionError, DatabaseError, SchemaError, ValidationError
 from interfaces import DatabaseInterface
+from logging_config import get_logger
 from models import QueueConfig, QueueFilter, QueueItem, QueueStatus
+from performance_monitor import get_performance_monitor, time_function
 
-logger = logging.getLogger(__name__)
-
-
-class DatabaseError(Exception):
-    """Custom exception for database operations."""
+logger = get_logger("database")
 
 
 class SQLiteDatabase(DatabaseInterface):
@@ -95,7 +95,7 @@ class SQLiteDatabase(DatabaseInterface):
                 logger.debug(f"Created new database connection for thread {threading.current_thread().name}")
             except sqlite3.Error as e:
                 logger.error(f"Failed to connect to database: {e}")
-                raise DatabaseError(f"Database connection failed: {e}") from e
+                raise ErrorHandler.handle_database_error(e, "connect", context={"db_path": str(self.db_path)})
         
         return self._local.connection
 
@@ -108,47 +108,53 @@ class SQLiteDatabase(DatabaseInterface):
             yield cursor
         except sqlite3.Error as e:
             logger.error(f"Database operation failed: {e}")
-            conn.rollback()
-            raise DatabaseError(f"Database operation failed: {e}") from e
+            try:
+                conn.rollback()
+            except sqlite3.Error as rollback_error:
+                logger.error(f"Failed to rollback transaction: {rollback_error}")
+            raise ErrorHandler.handle_database_error(e, "cursor_operation")
         finally:
-            cursor.close()
+            try:
+                cursor.close()
+            except sqlite3.Error as close_error:
+                logger.warning(f"Failed to close cursor: {close_error}")
 
+    @with_database_error_handling(operation="initialize")
     def initialize(self) -> bool:
         """Initialize the database and create tables if needed."""
         if self._initialized:
             return True
             
         with self._connection_lock:
-            try:
-                with self._get_cursor() as cursor:
-                    # Create all tables
-                    cursor.executescript(self.CREATE_TABLES_SQL)
-                    
-                    # Check and update schema version
-                    cursor.execute("SELECT version FROM schema_version LIMIT 1")
-                    result = cursor.fetchone()
-                    
-                    if result is None:
-                        # First time setup
-                        cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (self.SCHEMA_VERSION,))
-                        logger.info(f"Database initialized with schema version {self.SCHEMA_VERSION}")
-                    else:
-                        current_version = result[0]
-                        if current_version < self.SCHEMA_VERSION:
-                            self._migrate_schema(cursor, current_version, self.SCHEMA_VERSION)
-                        elif current_version > self.SCHEMA_VERSION:
-                            logger.warning(f"Database schema version {current_version} is newer than expected {self.SCHEMA_VERSION}")
-                    
-                    # Set default configuration if not exists
-                    self._initialize_default_config(cursor)
-                    
-                self._initialized = True
-                logger.info("Database initialization completed successfully")
-                return True
+            with self._get_cursor() as cursor:
+                # Create all tables
+                cursor.executescript(self.CREATE_TABLES_SQL)
                 
-            except Exception as e:
-                logger.error(f"Database initialization failed: {e}")
-                return False
+                # Check and update schema version
+                cursor.execute("SELECT version FROM schema_version LIMIT 1")
+                result = cursor.fetchone()
+                
+                if result is None:
+                    # First time setup
+                    cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (self.SCHEMA_VERSION,))
+                    logger.info(f"Database initialized with schema version {self.SCHEMA_VERSION}")
+                else:
+                    current_version = result[0]
+                    if current_version < self.SCHEMA_VERSION:
+                        self._migrate_schema(cursor, current_version, self.SCHEMA_VERSION)
+                    elif current_version > self.SCHEMA_VERSION:
+                        logger.warning(f"Database schema version {current_version} is newer than expected {self.SCHEMA_VERSION}")
+                        raise SchemaError(
+                            f"Database schema version {current_version} is newer than expected {self.SCHEMA_VERSION}",
+                            schema_version=current_version
+                        )
+                
+                # Set default configuration if not exists
+                self._initialize_default_config(cursor)
+                
+            self._initialized = True
+            logger.info("Database initialization completed successfully")
+            return True
 
     def _migrate_schema(self, cursor: sqlite3.Cursor, from_version: int, to_version: int) -> None:
         """Migrate database schema from one version to another."""
@@ -171,105 +177,108 @@ class SQLiteDatabase(DatabaseInterface):
                 (key, json.dumps(value))
             )
 
+    @with_database_error_handling(operation="INSERT", table="queue_items")
+    @time_function("database.create_queue_item")
     def create_queue_item(self, item: QueueItem) -> bool:
         """Create a new queue item in the database."""
-        try:
-            with self._get_cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO queue_items (
-                        id, workflow_name, workflow_data, status, created_at, updated_at,
-                        started_at, completed_at, error_message, result_data
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    item.id,
-                    item.workflow_name,
-                    json.dumps(item.workflow_data),
-                    item.status.value,
-                    item.created_at.isoformat(),
-                    item.updated_at.isoformat(),
-                    item.started_at.isoformat() if item.started_at else None,
-                    item.completed_at.isoformat() if item.completed_at else None,
-                    item.error_message,
-                    json.dumps(item.result_data) if item.result_data else None
-                ))
-                logger.debug(f"Created queue item {item.id}")
-                return True
-        except Exception as e:
-            logger.error(f"Failed to create queue item {item.id}: {e}")
-            return False
+        # Validate item data
+        if not item.id:
+            raise ValidationError("Queue item ID cannot be empty", field="id")
+        if not item.workflow_name:
+            raise ValidationError("Workflow name cannot be empty", field="workflow_name")
+        
+        with self._get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO queue_items (
+                    id, workflow_name, workflow_data, status, created_at, updated_at,
+                    started_at, completed_at, error_message, result_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                item.id,
+                item.workflow_name,
+                json.dumps(item.workflow_data),
+                item.status.value,
+                item.created_at.isoformat(),
+                item.updated_at.isoformat(),
+                item.started_at.isoformat() if item.started_at else None,
+                item.completed_at.isoformat() if item.completed_at else None,
+                item.error_message,
+                json.dumps(item.result_data) if item.result_data else None
+            ))
+            logger.debug(f"Created queue item {item.id}")
+            return True
 
+    @with_database_error_handling(operation="SELECT", table="queue_items")
+    @time_function("database.get_queue_item")
     def get_queue_item(self, item_id: str) -> QueueItem | None:
         """Retrieve a queue item by ID."""
-        try:
-            with self._get_cursor() as cursor:
-                cursor.execute("SELECT * FROM queue_items WHERE id = ?", (item_id,))
-                row = cursor.fetchone()
-                if row:
-                    return self._row_to_queue_item(row)
-                return None
-        except Exception as e:
-            logger.error(f"Failed to get queue item {item_id}: {e}")
+        if not item_id:
+            raise ValidationError("Item ID cannot be empty", field="item_id")
+        
+        with self._get_cursor() as cursor:
+            cursor.execute("SELECT * FROM queue_items WHERE id = ?", (item_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_queue_item(row)
             return None
 
+    @with_database_error_handling(operation="SELECT", table="queue_items")
+    @time_function("database.get_all_queue_items")
     def get_all_queue_items(self) -> list[QueueItem]:
         """Retrieve all queue items."""
-        try:
-            with self._get_cursor() as cursor:
-                cursor.execute("SELECT * FROM queue_items ORDER BY created_at DESC")
-                rows = cursor.fetchall()
-                return [self._row_to_queue_item(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Failed to get all queue items: {e}")
-            return []
+        with self._get_cursor() as cursor:
+            cursor.execute("SELECT * FROM queue_items ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            return [self._row_to_queue_item(row) for row in rows]
 
+    @with_database_error_handling(operation="UPDATE", table="queue_items")
     def update_queue_item(self, item: QueueItem) -> bool:
         """Update an existing queue item."""
-        try:
-            # Update the updated_at timestamp
-            item.updated_at = datetime.now(timezone.utc)
+        if not item.id:
+            raise ValidationError("Queue item ID cannot be empty", field="id")
+        
+        # Update the updated_at timestamp
+        item.updated_at = datetime.now(timezone.utc)
+        
+        with self._get_cursor() as cursor:
+            cursor.execute("""
+                UPDATE queue_items SET
+                    workflow_name = ?, workflow_data = ?, status = ?, updated_at = ?,
+                    started_at = ?, completed_at = ?, error_message = ?, result_data = ?
+                WHERE id = ?
+            """, (
+                item.workflow_name,
+                json.dumps(item.workflow_data),
+                item.status.value,
+                item.updated_at.isoformat(),
+                item.started_at.isoformat() if item.started_at else None,
+                item.completed_at.isoformat() if item.completed_at else None,
+                item.error_message,
+                json.dumps(item.result_data) if item.result_data else None,
+                item.id
+            ))
             
-            with self._get_cursor() as cursor:
-                cursor.execute("""
-                    UPDATE queue_items SET
-                        workflow_name = ?, workflow_data = ?, status = ?, updated_at = ?,
-                        started_at = ?, completed_at = ?, error_message = ?, result_data = ?
-                    WHERE id = ?
-                """, (
-                    item.workflow_name,
-                    json.dumps(item.workflow_data),
-                    item.status.value,
-                    item.updated_at.isoformat(),
-                    item.started_at.isoformat() if item.started_at else None,
-                    item.completed_at.isoformat() if item.completed_at else None,
-                    item.error_message,
-                    json.dumps(item.result_data) if item.result_data else None,
-                    item.id
-                ))
-                
-                if cursor.rowcount > 0:
-                    logger.debug(f"Updated queue item {item.id}")
-                    return True
-                else:
-                    logger.warning(f"Queue item {item.id} not found for update")
-                    return False
-        except Exception as e:
-            logger.error(f"Failed to update queue item {item.id}: {e}")
-            return False
+            if cursor.rowcount > 0:
+                logger.debug(f"Updated queue item {item.id}")
+                return True
+            else:
+                logger.warning(f"Queue item {item.id} not found for update")
+                return False
 
+    @with_database_error_handling(operation="DELETE", table="queue_items")
     def delete_queue_item(self, item_id: str) -> bool:
         """Delete a queue item by ID."""
-        try:
-            with self._get_cursor() as cursor:
-                cursor.execute("DELETE FROM queue_items WHERE id = ?", (item_id,))
-                if cursor.rowcount > 0:
-                    logger.debug(f"Deleted queue item {item_id}")
-                    return True
-                else:
-                    logger.warning(f"Queue item {item_id} not found for deletion")
-                    return False
-        except Exception as e:
-            logger.error(f"Failed to delete queue item {item_id}: {e}")
-            return False
+        if not item_id:
+            raise ValidationError("Item ID cannot be empty", field="item_id")
+        
+        with self._get_cursor() as cursor:
+            cursor.execute("DELETE FROM queue_items WHERE id = ?", (item_id,))
+            if cursor.rowcount > 0:
+                logger.debug(f"Deleted queue item {item_id}")
+                return True
+            else:
+                logger.warning(f"Queue item {item_id} not found for deletion")
+                return False
 
     def get_items_by_status(self, status: QueueStatus) -> list[QueueItem]:
         """Retrieve queue items by status."""

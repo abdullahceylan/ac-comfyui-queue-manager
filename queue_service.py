@@ -11,15 +11,13 @@ from typing import Any
 
 from archive_service import ArchiveService
 from database import SQLiteDatabase
+from error_handler import ErrorHandler, with_error_handling
+from exceptions import QueueServiceError, ValidationError
 from filter_service import FilterService
 from interfaces import DatabaseInterface, QueueServiceInterface
 from models import QueueConfig, QueueFilter, QueueItem, QueueState, QueueStatus
 
 logger = logging.getLogger(__name__)
-
-
-class QueueServiceError(Exception):
-    """Custom exception for queue service operations."""
 
 
 class QueueService(QueueServiceInterface):
@@ -44,6 +42,7 @@ class QueueService(QueueServiceInterface):
         self._initialized = True
         logger.info("Queue service initialized successfully")
 
+    @with_error_handling(error_type=QueueServiceError, operation="add_workflow")
     def add_workflow(
         self, workflow_data: dict[str, Any], workflow_name: str = ""
     ) -> str:
@@ -60,10 +59,13 @@ class QueueService(QueueServiceInterface):
             QueueServiceError: If the workflow cannot be added
         """
         if not self._initialized:
-            raise QueueServiceError("Queue service not initialized")
+            raise QueueServiceError("Queue service not initialized", operation="add_workflow")
         
         if not workflow_data:
-            raise QueueServiceError("Workflow data cannot be empty")
+            raise ValidationError("Workflow data cannot be empty", field="workflow_data")
+        
+        if not isinstance(workflow_data, dict):
+            raise ValidationError("Workflow data must be a dictionary", field="workflow_data", value=type(workflow_data).__name__)
         
         # Create a new queue item
         item = QueueItem(
@@ -74,11 +76,12 @@ class QueueService(QueueServiceInterface):
         
         # Save to database
         if not self.database.create_queue_item(item):
-            raise QueueServiceError(f"Failed to create queue item {item.id}")
+            raise QueueServiceError(f"Failed to create queue item {item.id}", item_id=item.id, operation="create")
         
         logger.info(f"Added workflow to queue: {item.id} - {item.workflow_name}")
         return item.id
 
+    @with_error_handling(error_type=QueueServiceError, operation="get_queue_items")
     def get_queue_items(self, status: QueueStatus | None = None) -> list[QueueItem]:
         """Get queue items, optionally filtered by status.
         
@@ -89,16 +92,12 @@ class QueueService(QueueServiceInterface):
             List of queue items
         """
         if not self._initialized:
-            raise QueueServiceError("Queue service not initialized")
+            raise QueueServiceError("Queue service not initialized", operation="get_queue_items")
         
-        try:
-            if status is not None:
-                return self.database.get_items_by_status(status)
-            else:
-                return self.database.get_all_queue_items()
-        except Exception as e:
-            logger.error(f"Failed to get queue items: {e}")
-            raise QueueServiceError(f"Failed to get queue items: {e}") from e
+        if status is not None:
+            return self.database.get_items_by_status(status)
+        else:
+            return self.database.get_all_queue_items()
 
     def get_queue_item(self, item_id: str) -> QueueItem | None:
         """Get a specific queue item by ID.

@@ -12,10 +12,14 @@ from typing import Any
 from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.exceptions import BadRequest, NotFound
 
+from error_handler import ErrorHandler, create_error_response, with_api_error_handling
+from exceptions import APIError, NotFoundError, QueueManagerError, ValidationError
+from logging_config import get_logger
 from models import QueueFilter, QueueStatus
-from queue_service import QueueService, QueueServiceError
+from performance_monitor import get_performance_monitor, time_function
+from queue_service import QueueService
 
-logger = logging.getLogger(__name__)
+logger = get_logger("api_routes")
 
 
 class QueueManagerAPI:
@@ -42,8 +46,10 @@ class QueueManagerAPI:
 
     def _register_routes(self) -> None:
         """Register all API routes."""
-        # Health check
+        # Health check endpoints
         self.app.route('/health', methods=['GET'])(self.health_check)
+        self.app.route('/health/detailed', methods=['GET'])(self.detailed_health_check)
+        self.app.route('/health/metrics', methods=['GET'])(self.health_metrics)
         
         # Static files
         self.app.route('/', methods=['GET'])(self.serve_index)
@@ -73,64 +79,115 @@ class QueueManagerAPI:
     def _register_error_handlers(self) -> None:
         """Register error handlers for the Flask app."""
         
-        @self.app.errorhandler(QueueServiceError)
-        def handle_queue_service_error(error: QueueServiceError) -> tuple[dict[str, Any], int]:
-            """Handle queue service errors."""
-            logger.error(f"Queue service error: {error}")
-            return {
-                'error': 'Queue service error',
-                'message': str(error),
-                'timestamp': datetime.utcnow().isoformat()
-            }, 500
+        @self.app.errorhandler(QueueManagerError)
+        def handle_queue_manager_error(error: QueueManagerError) -> tuple[dict[str, Any], int]:
+            """Handle queue manager errors."""
+            ErrorHandler.log_error(error, context={"handler": "flask_error_handler"})
+            
+            # Determine HTTP status code
+            if isinstance(error, APIError):
+                status_code = error.details.get('status_code', 500)
+            elif isinstance(error, ValidationError):
+                status_code = 400
+            elif isinstance(error, NotFoundError):
+                status_code = 404
+            else:
+                status_code = 500
+            
+            return create_error_response(error), status_code
 
         @self.app.errorhandler(BadRequest)
         def handle_bad_request(error: BadRequest) -> tuple[dict[str, Any], int]:
             """Handle bad request errors."""
             logger.warning(f"Bad request: {error}")
-            return {
-                'error': 'Bad request',
-                'message': str(error.description),
-                'timestamp': datetime.utcnow().isoformat()
-            }, 400
+            validation_error = ValidationError(
+                str(error.description) or "Bad request",
+                details={"werkzeug_error": str(error)}
+            )
+            return create_error_response(validation_error), 400
 
         @self.app.errorhandler(NotFound)
         def handle_not_found(error: NotFound) -> tuple[dict[str, Any], int]:
             """Handle not found errors."""
-            return {
-                'error': 'Not found',
-                'message': 'The requested resource was not found',
-                'timestamp': datetime.utcnow().isoformat()
-            }, 404
+            not_found_error = NotFoundError(
+                "The requested resource was not found",
+                details={"werkzeug_error": str(error)}
+            )
+            return create_error_response(not_found_error), 404
 
         @self.app.errorhandler(Exception)
         def handle_generic_error(error: Exception) -> tuple[dict[str, Any], int]:
             """Handle generic errors."""
             logger.error(f"Unexpected error: {error}", exc_info=True)
-            return {
-                'error': 'Internal server error',
-                'message': 'An unexpected error occurred',
-                'timestamp': datetime.utcnow().isoformat()
-            }, 500
+            
+            # Convert to structured error
+            api_error = APIError(
+                "An unexpected error occurred",
+                status_code=500,
+                details={"original_error": str(error)},
+                cause=error
+            )
+            
+            return create_error_response(api_error, include_traceback=False), 500
 
+    @with_api_error_handling(endpoint="/health", method="GET")
+    @time_function("api.health_check")
     def health_check(self) -> dict[str, Any]:
         """Health check endpoint."""
+        # Test queue service connectivity
+        queue_state = self.queue_service.get_queue_state()
+        
+        return {
+            'status': 'healthy',
+            'timestamp': datetime.utcnow().isoformat(),
+            'queue_state': queue_state.value,
+            'version': '1.0.0'
+        }
+    
+    @with_api_error_handling(endpoint="/health/detailed", method="GET")
+    @time_function("api.detailed_health_check")
+    def detailed_health_check(self) -> dict[str, Any]:
+        """Detailed health check endpoint with comprehensive diagnostics."""
+        from health_check import get_health_check_manager
+        import asyncio
+        
+        # Get health check manager and run all checks
+        health_manager = get_health_check_manager()
+        
+        # Run health checks in a new event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
         try:
-            # Test queue service connectivity
-            queue_state = self.queue_service.get_queue_state()
-            
-            return {
-                'status': 'healthy',
-                'timestamp': datetime.utcnow().isoformat(),
-                'queue_state': queue_state.value,
-                'version': '1.0.0'
-            }
-        except Exception as e:
-            logger.error(f"Health check failed: {e}")
-            return {
-                'status': 'unhealthy',
-                'timestamp': datetime.utcnow().isoformat(),
-                'error': str(e)
-            }, 503
+            results = loop.run_until_complete(health_manager.run_all_checks())
+            overall_health = health_manager.get_overall_health()
+        finally:
+            loop.close()
+        
+        return overall_health
+    
+    @with_api_error_handling(endpoint="/health/metrics", method="GET")
+    @time_function("api.health_metrics")
+    def health_metrics(self) -> dict[str, Any]:
+        """Health metrics endpoint with performance data."""
+        perf_monitor = get_performance_monitor()
+        
+        # Get metrics summary for the last hour
+        since = datetime.utcnow() - timedelta(hours=1)
+        metrics_summary = perf_monitor.get_metrics_summary(since)
+        
+        # Get operation statistics
+        operation_stats = perf_monitor.get_operation_stats()
+        
+        # Get health status
+        health_status = perf_monitor.get_health_status()
+        
+        return {
+            'timestamp': datetime.utcnow().isoformat(),
+            'health_status': health_status,
+            'metrics_summary': metrics_summary,
+            'operation_stats': operation_stats
+        }
 
     def serve_index(self) -> str:
         """Serve the main index.html file."""
@@ -146,15 +203,15 @@ class QueueManagerAPI:
     def _validate_json_request(self) -> dict[str, Any]:
         """Validate and parse JSON request data."""
         if not request.is_json:
-            raise BadRequest("Request must be JSON")
+            raise ValidationError("Request must be JSON", field="content_type")
         
         try:
             data = request.get_json()
             if data is None:
-                raise BadRequest("Invalid JSON data")
+                raise ValidationError("Invalid JSON data", field="request_body")
             return data
         except Exception as e:
-            raise BadRequest(f"Failed to parse JSON: {e}")
+            raise ValidationError(f"Failed to parse JSON: {e}", field="request_body", cause=e)
 
     def _parse_queue_filter(self, params: dict[str, Any]) -> QueueFilter:
         """Parse queue filter parameters from request."""
@@ -169,15 +226,21 @@ class QueueManagerAPI:
             try:
                 filter_criteria.status = [QueueStatus(status) for status in status_values]
             except ValueError as e:
-                raise BadRequest(f"Invalid status value: {e}")
+                raise ValidationError(f"Invalid status value: {e}", field="status", value=status_values)
         
         # Parse workflow name filter
         if 'workflow_name' in params:
-            filter_criteria.workflow_name = params['workflow_name']
+            workflow_name = params['workflow_name']
+            if not isinstance(workflow_name, str):
+                raise ValidationError("Workflow name must be a string", field="workflow_name", value=workflow_name)
+            filter_criteria.workflow_name = workflow_name
         
         # Parse search term
         if 'search' in params:
-            filter_criteria.search_term = params['search']
+            search_term = params['search']
+            if not isinstance(search_term, str):
+                raise ValidationError("Search term must be a string", field="search", value=search_term)
+            filter_criteria.search_term = search_term
         
         # Parse date range
         if 'date_from' in params or 'date_to' in params:
@@ -192,10 +255,12 @@ class QueueManagerAPI:
                     date_to = datetime.fromisoformat(params['date_to'])
                 
                 if date_from and date_to:
+                    if date_from > date_to:
+                        raise ValidationError("date_from must be before date_to", field="date_range")
                     filter_criteria.date_range = (date_from, date_to)
                     
             except ValueError as e:
-                raise BadRequest(f"Invalid date format: {e}")
+                raise ValidationError(f"Invalid date format: {e}", field="date_range", cause=e)
         
         return filter_criteria
 

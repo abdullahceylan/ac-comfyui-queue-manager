@@ -13,14 +13,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
+from error_handler import ErrorHandler, with_error_handling
+from exceptions import ValidationError, WorkflowExecutionError
 from interfaces import WorkflowExecutorInterface
 from models import QueueStatus
 
 logger = logging.getLogger(__name__)
-
-
-class WorkflowExecutionError(Exception):
-    """Custom exception for workflow execution errors."""
 
 
 class WorkflowExecutor(WorkflowExecutorInterface):
@@ -166,6 +164,7 @@ class WorkflowExecutor(WorkflowExecutorInterface):
         
         return workflow_id
 
+    @with_error_handling(error_type=WorkflowExecutionError, operation="execute_workflow")
     def execute_workflow(self, workflow_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a workflow and return the results.
         
@@ -178,21 +177,27 @@ class WorkflowExecutor(WorkflowExecutorInterface):
         Raises:
             WorkflowExecutionError: If execution fails
         """
+        if not workflow_data:
+            raise ValidationError("Workflow data cannot be empty", field="workflow_data")
+        
+        if not isinstance(workflow_data, dict):
+            raise ValidationError("Workflow data must be a dictionary", field="workflow_data", value=type(workflow_data).__name__)
+        
         workflow_id = str(uuid.uuid4())
         
+        # Create workflow info for tracking
+        with self._lock:
+            self._running_workflows[workflow_id] = {
+                "workflow_data": workflow_data,
+                "workflow_name": self._extract_workflow_name(workflow_data),
+                "status": QueueStatus.RUNNING,
+                "started_at": datetime.now(timezone.utc),
+                "completed_at": None,
+                "error_message": None,
+                "result_data": None,
+            }
+        
         try:
-            # Create workflow info for tracking
-            with self._lock:
-                self._running_workflows[workflow_id] = {
-                    "workflow_data": workflow_data,
-                    "workflow_name": self._extract_workflow_name(workflow_data),
-                    "status": QueueStatus.RUNNING,
-                    "started_at": datetime.now(timezone.utc),
-                    "completed_at": None,
-                    "error_message": None,
-                    "result_data": None,
-                }
-            
             # Execute the workflow
             execution_id = self._execute_workflow_directly(workflow_data)
             
@@ -221,7 +226,12 @@ class WorkflowExecutor(WorkflowExecutorInterface):
                 QueueStatus.FAILED, 
                 error_message=str(e)
             )
-            raise WorkflowExecutionError(f"Workflow execution failed: {e}") from e
+            raise WorkflowExecutionError(
+                f"Workflow execution failed: {e}", 
+                workflow_id=workflow_id,
+                execution_stage="execution",
+                cause=e
+            )
 
     def _execute_workflow_directly(self, workflow_data: Dict[str, Any]) -> str:
         """Execute a workflow directly through ComfyUI.

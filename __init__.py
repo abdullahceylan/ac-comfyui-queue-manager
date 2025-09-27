@@ -123,8 +123,29 @@ def register_menu_extension():
 def initialize_queue_manager():
     """Initialize the queue manager system."""
     try:
+        # Initialize logging and monitoring first
+        from logging_config import setup_logging
+        from performance_monitor import setup_performance_monitoring
+        from health_check import setup_health_checks
+        
+        # Set up logging
+        log_dir = current_dir / "logs"
+        logging_config = setup_logging(
+            log_dir=log_dir,
+            console_level=20,  # INFO level
+            file_level=10,     # DEBUG level
+            structured=True
+        )
+        
+        logger = logging_config.get_logger("init")
+        logger.info(f"Queue Manager logging initialized (v{__version__})")
+        
+        # Set up performance monitoring
+        perf_monitor = setup_performance_monitoring(max_history_size=1000)
+        logger.info("Performance monitoring initialized")
+        
         # Import and initialize core services
-        from api_routes import setup_api_routes
+        from api_routes import QueueManagerAPI
         from database import SQLiteDatabase
         from queue_service import QueueService
 
@@ -132,17 +153,34 @@ def initialize_queue_manager():
         db_path = current_dir / "queue_manager.db"
         database = SQLiteDatabase(str(db_path))
         database.initialize()
+        logger.info("Database initialized")
 
         # Initialize queue service
         queue_service = QueueService(database)
+        logger.info("Queue service initialized")
+
+        # Set up health checks with actual services
+        health_manager = setup_health_checks(database=database, queue_service=queue_service)
+        health_manager.start_monitoring(interval=300.0)  # 5 minutes
+        logger.info("Health monitoring started")
 
         # Set up API routes (will be used by the web interface)
-        setup_api_routes(queue_service)
+        api = QueueManagerAPI(queue_service)
+        logger.info("API routes initialized")
 
+        logger.info(f"Queue Manager initialized successfully (v{__version__})")
         print(f"[Queue Manager] Initialized successfully (v{__version__})")
         return True
 
     except Exception as e:
+        # Fall back to basic logging if initialization fails
+        import logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        logger = logging.getLogger("queue_manager.init")
+        logger.error(f"Failed to initialize queue manager: {e}")
         print(f"[Queue Manager] Failed to initialize: {e}")
         return False
 
