@@ -11,8 +11,10 @@
         <header>
             <h1>Queue Manager</h1>
             <div class="controls">
+                <button id="help-btn" class="btn btn-secondary">❓ Help</button>
+                <button id="import-export-btn" class="btn btn-secondary">📁 Import/Export</button>
                 <button id="pause-resume-btn" class="btn btn-primary">Pause</button>
-                <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+                <button id="refresh-btn" class="btn btn-secondary">🔄 Refresh</button>
             </div>
         </header>
         
@@ -22,6 +24,7 @@
                     <h2>Queue Items</h2>
                     <div class="queue-actions">
                         <button id="archive-selected-btn" class="btn btn-warning">Archive Selected</button>
+                        <button id="restore-selected-btn" class="btn btn-secondary">Restore Selected</button>
                         <button id="delete-selected-btn" class="btn btn-danger">Delete Selected</button>
                     </div>
                 </div>
@@ -43,6 +46,143 @@
                 </div>
             </div>
         </main>
+    </div>
+    
+    <!-- Modal Dialogs -->
+    <div id="modal-overlay" class="modal-overlay">
+        <!-- Import/Export Modal -->
+        <div id="import-export-modal" class="modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Import/Export Queue</h3>
+                <button class="modal-close" data-modal="import-export-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="tab-btn active" data-tab="export">Export</button>
+                    <button class="tab-btn" data-tab="import">Import</button>
+                </div>
+                
+                <div id="export-tab" class="tab-content active">
+                    <p>Export queue items to a JSON file:</p>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="export-all" checked> Export all items
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="export-selected"> Export selected items only
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="export-btn" class="btn btn-primary">Export</button>
+                        <button class="btn btn-secondary modal-close" data-modal="import-export-modal">Cancel</button>
+                    </div>
+                </div>
+                
+                <div id="import-tab" class="tab-content">
+                    <p>Import queue items from a JSON file:</p>
+                    <div class="form-group">
+                        <input type="file" id="import-file" accept=".json" class="file-input">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="merge-import" checked> Merge with existing items
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="import-btn" class="btn btn-primary">Import</button>
+                        <button class="btn btn-secondary modal-close" data-modal="import-export-modal">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Confirmation Modal -->
+        <div id="confirmation-modal" class="modal">
+            <div class="modal-header">
+                <h3 id="confirmation-title">Confirm Action</h3>
+                <button class="modal-close" data-modal="confirmation-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmation-message">Are you sure you want to perform this action?</p>
+                <div class="modal-actions">
+                    <button id="confirm-btn" class="btn btn-danger">Confirm</button>
+                    <button class="btn btn-secondary modal-close" data-modal="confirmation-modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Archive/Restore Modal -->
+        <div id="archive-modal" class="modal">
+            <div class="modal-header">
+                <h3 id="archive-title">Archive Items</h3>
+                <button class="modal-close" data-modal="archive-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="archive-message">Select archive options:</p>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="archive-with-results" checked> Include execution results
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="archive-compress"> Compress archived data
+                    </label>
+                </div>
+                <div class="modal-actions">
+                    <button id="archive-confirm-btn" class="btn btn-warning">Archive</button>
+                    <button class="btn btn-secondary modal-close" data-modal="archive-modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Help Modal -->
+        <div id="help-modal" class="modal">
+            <div class="modal-header">
+                <h3>Queue Manager Help</h3>
+                <button class="modal-close" data-modal="help-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4>Keyboard Shortcuts</h4>
+                <div class="help-shortcuts">
+                    <div class="shortcut-item">
+                        <kbd>Space</kbd>
+                        <span>Pause/Resume queue</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl+R</kbd>
+                        <span>Refresh queue items</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl+A</kbd>
+                        <span>Select all visible items</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Delete</kbd>
+                        <span>Delete selected items</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Escape</kbd>
+                        <span>Close modal / Clear selection</span>
+                    </div>
+                </div>
+                
+                <h4>Features</h4>
+                <ul class="help-features">
+                    <li><strong>Real-time Updates:</strong> Queue items update automatically every 5 seconds</li>
+                    <li><strong>Filtering:</strong> Search by workflow name or filter by status</li>
+                    <li><strong>Bulk Operations:</strong> Select multiple items for archive/delete operations</li>
+                    <li><strong>Import/Export:</strong> Save and load queue configurations</li>
+                    <li><strong>Archive System:</strong> Archive completed workflows for later reference</li>
+                </ul>
+                
+                <div class="modal-actions">
+                    <button class="btn btn-secondary modal-close" data-modal="help-modal">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <script src="queue_manager.js"></script>
