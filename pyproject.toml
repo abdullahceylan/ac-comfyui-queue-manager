@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ac-comfyui-queue-manager"
+name = "comfyui-queue-manager"
 version = "0.1.0"
 description = "A comprehensive queue management system for ComfyUI workflows"
 authors = [{name = "Abdullah Ceylan"}]

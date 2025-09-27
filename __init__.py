@@ -35,13 +35,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "QueueManagerNode": "Queue Manager",
 }
 
-# Web directory for serving static files
+# Web directory for serving static files (following official convention)
 WEB_DIRECTORY = "./web"
-
-# ComfyUI Web Extensions
-WEB_EXTENSIONS = [
-    {"name": "queue_manager_extension", "path": "queue_manager_extension.js"}
-]
 
 # Extension metadata
 __version__ = "1.0.0"
@@ -49,27 +44,36 @@ __author__ = "AC ComfyUI Queue Manager"
 __description__ = "A comprehensive queue management system for ComfyUI workflows"
 
 
-def register_menu_extension():
-    """Register the Queue Manager menu extension with ComfyUI."""
+def setup_web_routes():
+    """Set up web routes for serving Queue Manager files."""
     if not server or not aiohttp_web:
         print("[Queue Manager] ComfyUI server modules not available")
         return False
 
     try:
-        # Register with ComfyUI's web extension system
-        if not hasattr(server, "PromptServer"):
-            return False
-
         prompt_server = server.PromptServer.instance
-        if not prompt_server or not hasattr(prompt_server, "app"):
+        if not prompt_server:
+            print("[Queue Manager] PromptServer instance not available")
+            return False
+            
+        if not hasattr(prompt_server, "app"):
+            print("[Queue Manager] PromptServer app not available")
             return False
 
         async def serve_extension_file(request):
             """Serve extension files."""
             filename = request.match_info.get("filename", "")
             file_path = current_dir / "web" / filename
+            
+            print(f"[Queue Manager] Serving file request: {filename}")
+            print(f"[Queue Manager] File path: {file_path}")
+            print(f"[Queue Manager] File exists: {file_path.exists()}")
+            
+            if file_path.exists():
+                print(f"[Queue Manager] File size: {file_path.stat().st_size} bytes")
 
             if not file_path.exists():
+                print(f"[Queue Manager] File not found: {file_path}")
                 return aiohttp_web.Response(status=404, text="File not found")
 
             # Determine content type
@@ -85,38 +89,42 @@ def register_menu_extension():
                     content_type = "text/plain"
 
             try:
+                # Check file size to prevent memory issues
+                file_size = file_path.stat().st_size
+                if file_size > 10 * 1024 * 1024:  # 10MB limit
+                    return aiohttp_web.Response(
+                        status=413, text="File too large"
+                    )
+                
                 with file_path.open(encoding="utf-8") as f:
                     content = f.read()
                 return aiohttp_web.Response(text=content, content_type=content_type)
+            except UnicodeDecodeError as e:
+                print(f"[Queue Manager] Unicode decode error for {filename}: {e}")
+                return aiohttp_web.Response(
+                    status=500, text=f"File encoding error: {e}"
+                )
             except OSError as e:
+                print(f"[Queue Manager] OS error reading {filename}: {e}")
                 return aiohttp_web.Response(
                     status=500, text=f"Error reading file: {e}"
                 )
+            except Exception as e:
+                print(f"[Queue Manager] Unexpected error reading {filename}: {e}")
+                return aiohttp_web.Response(
+                    status=500, text=f"Unexpected error: {e}"
+                )
 
-        # Register routes
+        # Register routes for serving web files
         prompt_server.app.router.add_get(
             "/extensions/comfyui-queue-manager/{filename}", serve_extension_file
         )
 
-        # Copy extension to ComfyUI's web extensions directory
-        if folder_paths:
-            try:
-                web_extensions_dir = folder_paths.get_folder_paths("web_extensions")
-                if web_extensions_dir:
-                    extension_src = current_dir / "web" / "queue_manager_extension.js"
-                    for ext_dir in web_extensions_dir:
-                        ext_dest = Path(ext_dir) / "queue_manager_extension.js"
-                        if extension_src.exists():
-                            shutil.copy2(extension_src, ext_dest)
-                            print(f"[Queue Manager] Extension copied to {ext_dest}")
-            except OSError as e:
-                print(f"[Queue Manager] Could not copy extension: {e}")
-
-        print("[Queue Manager] Menu extension routes registered")
+        print("[Queue Manager] Web routes registered")
         return True
 
     except Exception as e:
-        print(f"[Queue Manager] Failed to register menu extension: {e}")
+        print(f"[Queue Manager] Failed to register web routes: {e}")
         return False
 
 
@@ -187,16 +195,16 @@ def initialize_queue_manager():
 
 # Initialize on import
 _initialized = initialize_queue_manager()
-_menu_registered = register_menu_extension()
+
+# Try to set up web routes, but don't fail if ComfyUI isn't ready
+try:
+    _web_routes_setup = setup_web_routes()
+except Exception as e:
+    print(f"[Queue Manager] Could not set up web routes immediately: {e}")
+    _web_routes_setup = False
 
 __all__ = [
-    "NODE_CLASS_MAPPINGS",
-    "NODE_DISPLAY_NAME_MAPPINGS",
-    "WEB_DIRECTORY",
-    "WEB_EXTENSIONS",
-    "__author__",
-    "__description__",
-    "__version__",
-    "initialize_queue_manager",
-    "register_menu_extension",
+    "NODE_CLASS_MAPPINGS", 
+    "NODE_DISPLAY_NAME_MAPPINGS", 
+    "WEB_DIRECTORY"
 ]

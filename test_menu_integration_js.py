@@ -18,7 +18,7 @@ class TestJavaScriptMenuIntegration(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.web_dir = current_dir / "web"
-        self.extension_file = self.web_dir / "queue_manager_extension.js"
+        self.extension_file = self.web_dir / "queue_manager_menu.js"
 
     def test_extension_file_syntax(self):
         """Test that the extension JavaScript file has valid syntax."""
@@ -159,8 +159,7 @@ class TestMenuIntegrationEndToEnd(unittest.TestCase):
     def test_all_required_files_exist(self):
         """Test that all required files for menu integration exist."""
         required_files = [
-            "queue_manager_extension.js",
-            "menu_extension.js",  # Legacy fallback
+            "queue_manager_menu.js",
             "index.html",
             "queue_manager.js",
             "styles.css",
@@ -188,10 +187,9 @@ class TestMenuIntegrationEndToEnd(unittest.TestCase):
 
     def test_integration_consistency(self):
         """Test consistency between different integration files."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
-        legacy_file = self.web_dir / "menu_extension.js"
+        extension_file = self.web_dir / "queue_manager_menu.js"
 
-        if extension_file.exists() and legacy_file.exists():
+        if extension_file.exists():
             with extension_file.open(encoding="utf-8") as f:
                 ext_content = f.read()
 

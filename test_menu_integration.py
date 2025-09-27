@@ -31,7 +31,7 @@ class TestMenuIntegration(unittest.TestCase):
             ext for ext in WEB_EXTENSIONS if ext["name"] == "queue_manager_extension"
         )
         assert "path" in queue_ext
-        assert queue_ext["path"] == "queue_manager_extension.js"
+        assert queue_ext["path"] == "queue_manager_menu.js"
 
     def test_web_directory_configuration(self):
         """Test that WEB_DIRECTORY is properly configured."""
@@ -76,12 +76,12 @@ class TestMenuExtensionFiles(unittest.TestCase):
 
     def test_menu_extension_file_exists(self):
         """Test that the menu extension JavaScript file exists."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
-        assert extension_file.exists(), "queue_manager_extension.js should exist"
+        extension_file = self.web_dir / "queue_manager_menu.js"
+        assert extension_file.exists(), "queue_manager_menu.js should exist"
 
     def test_menu_extension_file_content(self):
         """Test that the menu extension file has required content."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
+        extension_file = self.web_dir / "queue_manager_menu.js"
 
         if extension_file.exists():
             with extension_file.open(encoding="utf-8") as f:
@@ -93,10 +93,17 @@ class TestMenuExtensionFiles(unittest.TestCase):
             assert "openQueueManager" in content
             assert "addMenuIntegration" in content
 
-    def test_legacy_menu_extension_file_exists(self):
-        """Test that the legacy menu extension file exists."""
-        legacy_file = self.web_dir / "menu_extension.js"
-        assert legacy_file.exists(), "menu_extension.js should exist as fallback"
+    def test_menu_extension_follows_official_api(self):
+        """Test that the menu extension follows the official ComfyUI API."""
+        extension_file = self.web_dir / "queue_manager_menu.js"
+        if extension_file.exists():
+            with extension_file.open(encoding="utf-8") as f:
+                content = f.read()
+            
+            # Check for official API usage
+            assert "app.registerExtension" in content
+            assert "commands:" in content
+            assert "menuCommands:" in content
 
 
 if __name__ == "__main__":

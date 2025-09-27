@@ -19,7 +19,7 @@ class QueueManagerNode:
     """
 
     @classmethod
-    def INPUT_TYPES(cls) -> dict[str, Any]:  # noqa: N802
+    def INPUT_TYPES(cls):
         """Define the input types for the node."""
         return {
             "required": {},
@@ -156,29 +156,29 @@ class QueueManagerNode:
         return (queue_item_id, queued_successfully)
 
     @classmethod
-    def IS_CHANGED(cls, **kwargs: Any) -> float:  # noqa: N802
+    def IS_CHANGED(cls, **kwargs):
         """
         Determine if the node needs to be re-executed.
         
         For queue management, we want to execute every time to capture workflows.
         """
-        # Return NaN to always execute
+        # Return NaN to always execute (following official documentation)
         return float("nan")
 
     @classmethod
-    def VALIDATE_INPUTS(cls, **kwargs: Any) -> bool:  # noqa: N802
+    def VALIDATE_INPUTS(cls, **kwargs):
         """Validate the inputs to the node."""
-        # Basic validation
+        # Basic validation following official documentation patterns
         workflow_name = kwargs.get("workflow_name", "")
         priority = kwargs.get("priority", 0)
         
         # Validate workflow name is not empty if provided
         if workflow_name and not isinstance(workflow_name, str):
-            return False
+            return "workflow_name must be a string"
             
         # Validate priority is within range
         if not isinstance(priority, int) or priority < -10 or priority > 10:
-            return False
+            return "priority must be an integer between -10 and 10"
             
         return True
 

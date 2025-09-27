@@ -56,8 +56,7 @@ class TestMenuIntegrationSimple(unittest.TestCase):
     def test_web_extension_files_exist(self):
         """Test that web extension files exist."""
         required_files = [
-            "queue_manager_extension.js",
-            "menu_extension.js",
+            "queue_manager_menu.js",
             "index.html",
             "queue_manager.js",
             "styles.css",
@@ -69,7 +68,7 @@ class TestMenuIntegrationSimple(unittest.TestCase):
 
     def test_extension_file_has_comfyui_integration(self):
         """Test that extension file has ComfyUI integration."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
+        extension_file = self.web_dir / "queue_manager_menu.js"
 
         if extension_file.exists():
             with extension_file.open(encoding="utf-8") as f:
@@ -81,7 +80,7 @@ class TestMenuIntegrationSimple(unittest.TestCase):
 
     def test_extension_file_has_menu_functionality(self):
         """Test that extension file has menu functionality."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
+        extension_file = self.web_dir / "queue_manager_menu.js"
 
         if extension_file.exists():
             with extension_file.open(encoding="utf-8") as f:
@@ -93,7 +92,7 @@ class TestMenuIntegrationSimple(unittest.TestCase):
 
     def test_extension_file_has_window_management(self):
         """Test that extension file has window management."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
+        extension_file = self.web_dir / "queue_manager_menu.js"
 
         if extension_file.exists():
             with extension_file.open(encoding="utf-8") as f:
@@ -105,7 +104,7 @@ class TestMenuIntegrationSimple(unittest.TestCase):
 
     def test_requirements_coverage(self):
         """Test that requirements 1.1 and 1.2 are covered."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
+        extension_file = self.web_dir / "queue_manager_menu.js"
 
         if extension_file.exists():
             with extension_file.open(encoding="utf-8") as f:
@@ -120,7 +119,7 @@ class TestMenuIntegrationSimple(unittest.TestCase):
 
     def test_error_handling_present(self):
         """Test that error handling is present."""
-        extension_file = self.web_dir / "queue_manager_extension.js"
+        extension_file = self.web_dir / "queue_manager_menu.js"
 
         if extension_file.exists():
             with extension_file.open(encoding="utf-8") as f:
