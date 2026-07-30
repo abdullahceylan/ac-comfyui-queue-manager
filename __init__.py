@@ -3,6 +3,7 @@ ComfyUI Queue Manager Custom Node
 A comprehensive queue management system for ComfyUI workflows.
 """
 
+import os
 import mimetypes
 from pathlib import Path
 import shutil
@@ -193,15 +194,18 @@ def initialize_queue_manager():
         return False
 
 
-# Initialize on import
-_initialized = initialize_queue_manager()
-
-# Try to set up web routes, but don't fail if ComfyUI isn't ready
-try:
-    _web_routes_setup = setup_web_routes()
-except Exception as e:
-    print(f"[Queue Manager] Could not set up web routes immediately: {e}")
+# Initialize on import, unless explicitly disabled to prevent reconnect/auto-resume loops
+if os.getenv("COMFYUI_QUEUE_MANAGER_DISABLE") or os.getenv("DISABLE_AUTO_RESUME"):
+    print("[Queue Manager] Disabled via environment variable (COMFYUI_QUEUE_MANAGER_DISABLE or DISABLE_AUTO_RESUME)")
+    _initialized = False
     _web_routes_setup = False
+else:
+    _initialized = initialize_queue_manager()
+    try:
+        _web_routes_setup = setup_web_routes()
+    except Exception as e:
+        print(f"[Queue Manager] Could not set up web routes immediately: {e}")
+        _web_routes_setup = False
 
 __all__ = [
     "NODE_CLASS_MAPPINGS", 
